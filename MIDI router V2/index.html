@@ -1,0 +1,220 @@
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>MIDI Router (USB)</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+  th { width: 60px; white-space: nowrap; }
+  .wrap { line-height: 1.9; }
+  .cb { display:inline-block; margin-right: 10px; white-space: nowrap; }
+  .bar { display:flex; gap:10px; align-items:center; margin: 12px 0; flex-wrap: wrap; }
+  button { padding: 10px 14px; }
+  #status { font-size: 14px; }
+  .hint { color:#666; font-size: 13px; margin-bottom: 10px; }
+  pre { background:#f7f7f7; padding:10px; border:1px solid #eee; overflow:auto; }
+</style>
+</head>
+<body>
+<h2>MIDI Router Config (Pico via USB Serial)</h2>
+
+<div class="bar">
+  <button id="btnConnect">Connect</button>
+  <button id="btnLoad" disabled>Load</button>
+  <button id="btnSave" disabled>Save</button>
+  <button id="btnMidirt" disabled>Show MIDIRT</button>
+  <span id="status"></span>
+</div>
+
+<div class="hint">
+  Работает в Chrome/Edge (WebSerial). Подключи Pico по USB, нажми Connect.<br/>
+  Channels: ALL = CH=-1. Outputs: куда слать с данного входа.
+</div>
+
+<table id="tbl">
+  <thead><tr><th>IN</th><th>Channels</th><th>Outputs</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<h3>Warnings</h3>
+<pre id="warn">(none)</pre>
+
+<h3>routing_table.py preview</h3>
+<pre id="midirt">(none)</pre>
+
+<script>
+const NUM_PORTS = 6;
+const NUM_OUTS = 6;
+const CH_LABELS = ["ALL", ...Array.from({length:16}, (_,i)=>String(i+1))];
+
+const el = (id) => document.getElementById(id);
+const sid = (i, kind, j) => `in${i}-${kind}${j}`;
+const setStatus = (msg, ok=true) => { el("status").textContent = msg; el("status").style.color = ok ? "green":"crimson"; };
+
+function buildTable() {
+  const tb = el("tbl").querySelector("tbody");
+  tb.innerHTML = "";
+  for (let i=0;i<NUM_PORTS;i++) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = `IN${i+1}`;
+    tr.appendChild(th);
+
+    const tdCh = document.createElement("td"); tdCh.className = "wrap";
+    for (let c=0;c<17;c++) {
+      const lab = document.createElement("label"); lab.className = "cb";
+      const inp = document.createElement("input"); inp.type="checkbox"; inp.id = sid(i,"ch",c);
+      lab.appendChild(inp);
+      lab.appendChild(document.createTextNode(" " + CH_LABELS[c]));
+      tdCh.appendChild(lab);
+    }
+    tr.appendChild(tdCh);
+
+    const tdOut = document.createElement("td"); tdOut.className = "wrap";
+    for (let o=0;o<NUM_OUTS;o++) {
+      const lab = document.createElement("label"); lab.className = "cb";
+      const inp = document.createElement("input"); inp.type="checkbox"; inp.id = sid(i,"out",o);
+      lab.appendChild(inp);
+      lab.appendChild(document.createTextNode(" OUT" + (o+1)));
+      tdOut.appendChild(lab);
+    }
+    tr.appendChild(tdOut);
+
+    tb.appendChild(tr);
+  }
+}
+
+buildTable();
+
+let port = null;
+let reader = null;
+let writer = null;
+let rxBuf = "";
+let pending = []; // queue of resolvers waiting for lines
+
+function pushLine(line) {
+  if (pending.length) pending.shift()(line);
+}
+
+async function readLoop() {
+  const dec = new TextDecoder();
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const chunk = dec.decode(value);
+    rxBuf += chunk;
+    let idx;
+    while ((idx = rxBuf.indexOf("\n")) >= 0) {
+      const line = rxBuf.slice(0, idx).replace(/\r$/, "");
+      rxBuf = rxBuf.slice(idx+1);
+      pushLine(line);
+    }
+  }
+}
+
+function readLine() {
+  return new Promise((resolve) => pending.push(resolve));
+}
+
+async function sendLine(s) {
+  const enc = new TextEncoder();
+  await writer.write(enc.encode(s + "\n"));
+}
+
+async function rpcGet() {
+  await sendLine("GET");
+  const line = await readLine();
+  if (!line.startsWith("OK ")) throw new Error(line);
+  return JSON.parse(line.slice(3));
+}
+
+async function rpcSet(obj) {
+  const payload = JSON.stringify(obj);
+  await sendLine("SET " + payload);
+  const line = await readLine();
+  if (!line.startsWith("OK")) throw new Error(line);
+  return true;
+}
+
+async function rpcMidirt() {
+  await sendLine("MIDIRT");
+  let out = [];
+  while (true) {
+    const line = await readLine();
+    if (line === "END") break;
+    if (line.startsWith("ERR")) throw new Error(line);
+    if (line !== "BEGIN") out.push(line);
+  }
+  return out.join("\n");
+}
+
+function collectMatrix() {
+  const m = { version: 1, inputs: [], warnings: [] };
+  for (let i=0;i<NUM_PORTS;i++) {
+    const channels = [];
+    const outputs = [];
+    for (let c=0;c<17;c++) channels.push(!!el(sid(i,"ch",c)).checked);
+    for (let o=0;o<NUM_OUTS;o++) outputs.push(!!el(sid(i,"out",o)).checked);
+    m.inputs.push({ channels, outputs });
+  }
+  return m;
+}
+
+function applyMatrix(m) {
+  for (let i=0;i<NUM_PORTS;i++) {
+    for (let c=0;c<17;c++) el(sid(i,"ch",c)).checked = !!m.inputs[i].channels[c];
+    for (let o=0;o<NUM_OUTS;o++) el(sid(i,"out",o)).checked = !!m.inputs[i].outputs[o];
+  }
+  el("warn").textContent = (m.warnings && m.warnings.length) ? m.warnings.join("\n") : "(none)";
+}
+
+el("btnConnect").addEventListener("click", async () => {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    reader = port.readable.getReader();
+    readLoop();
+    el("btnLoad").disabled = false;
+    el("btnSave").disabled = false;
+    el("btnMidirt").disabled = false;
+    setStatus("Connected");
+  } catch (e) {
+    setStatus("Connect failed: " + e, false);
+  }
+});
+
+el("btnLoad").addEventListener("click", async () => {
+  try {
+    const m = await rpcGet();
+    applyMatrix(m);
+    setStatus("Loaded");
+  } catch (e) {
+    setStatus("Load failed: " + e, false);
+  }
+});
+
+el("btnSave").addEventListener("click", async () => {
+  try {
+    const m = collectMatrix();
+    await rpcSet(m);
+    const m2 = await rpcGet();
+    applyMatrix(m2);
+    setStatus("Saved");
+  } catch (e) {
+    setStatus("Save failed: " + e, false);
+  }
+});
+
+el("btnMidirt").addEventListener("click", async () => {
+  try {
+    el("midirt").textContent = await rpcMidirt();
+  } catch (e) {
+    el("midirt").textContent = "Failed: " + e;
+  }
+});
+</script>
+</body>
+</html>
