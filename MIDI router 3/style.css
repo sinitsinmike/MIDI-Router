@@ -1,0 +1,253 @@
+/* ==========================================
+   Alpha1 Website
+   Version 1.0
+========================================== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+
+    background: #111111;
+    color: #f2f2f2;
+
+    font-family: Arial, Helvetica, sans-serif;
+
+    line-height: 1.7;
+
+}
+
+.container {
+
+    width: 92%;
+    max-width: 1100px;
+
+    margin: auto;
+
+}
+
+header {
+
+    padding: 60px 20px;
+
+    text-align: center;
+
+}
+
+h1 {
+
+    font-size: 56px;
+
+    color: #47d147;
+
+    margin-bottom: 10px;
+
+}
+
+.subtitle {
+
+    color: #bbbbbb;
+
+    font-size: 22px;
+
+}
+.hero-text {
+
+    margin-top: 25px;
+
+    text-align: center;
+
+    font-size: 22px;
+
+    color: #dddddd;
+
+    font-style: italic;
+
+    line-height: 1.6;
+
+}
+
+.hero {
+
+    text-align: center;
+
+    margin-bottom: 50px;
+
+}
+
+.hero img {
+
+    width: 50%;
+
+    max-width: 500px;
+
+    border-radius: 12px;
+
+    box-shadow: 0 0 30px rgba(0,0,0,.45);
+
+}
+
+section {
+
+    margin: 70px 0;
+
+}
+
+h2 {
+
+    color: #47d147;
+
+    margin-bottom: 20px;
+
+    font-size: 32px;
+
+}
+
+p {
+
+    margin-bottom: 18px;
+
+}
+
+.features {
+
+    margin-left: 20px;
+
+}
+
+.features li {
+
+    margin-bottom: 12px;
+
+}
+
+.gallery {
+
+    display: grid;
+
+    grid-template-columns: repeat(auto-fit,minmax(250px,1fr));
+
+    gap: 20px;
+
+}
+
+.gallery img {
+
+    width: 100%;
+
+    border-radius: 10px;
+
+    transition: .25s;
+
+    cursor: pointer;
+
+}
+
+.gallery img:hover {
+
+    transform: scale(1.03);
+
+}
+
+.buttons {
+
+    display: flex;
+
+    gap: 20px;
+
+    flex-wrap: wrap;
+
+}
+
+.button {
+
+    display: inline-block;
+
+    background: #47d147;
+
+    color: #111;
+
+    text-decoration: none;
+
+    padding: 14px 28px;
+
+    border-radius: 8px;
+
+    font-weight: bold;
+
+    transition: .25s;
+
+}
+
+.button:hover {
+
+    background: #6cf06c;
+
+    transform: translateY(-2px);
+
+}
+
+a {
+
+    color: #59d959;
+
+}
+
+footer {
+
+    margin-top: 80px;
+
+    padding: 40px 20px;
+
+    text-align: center;
+
+    color: #888;
+
+    border-top: 1px solid #333;
+
+}
+
+@media (max-width:700px){
+
+h1{
+
+font-size:42px;
+
+}
+
+.subtitle{
+
+font-size:18px;
+
+}
+
+h2{
+
+font-size:28px;
+
+}
+
+.buttons{
+
+flex-direction:column;
+
+}
+
+.button{
+
+text-align:center;
+
+}
+.hero-text{
+
+    font-size:18px;
+
+}
+}
