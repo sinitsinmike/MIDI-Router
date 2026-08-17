@@ -1,0 +1,31 @@
+1. SimpleMIDIDecoder.py
+
+* Real-Time callback;
+* F8/FA/FB/FC;
+* сохранение Running Status.
+
+2. main.py
+
+* doMidiRealtime();
+* маршрутизация Real-Time;
+* отдельный MIDI filter config;
+* CC filter;
+* Note Clone не влияет на Real-Time.
+
+3. index_note_clone.html
+
+* MIDI Real-Time checkboxes;
+* CC global block;
+* CC per input/channel;
+* Load/Save;
+* понятные предупреждения.
+
+4. Тесты
+
+* Note + Clock одновременно;
+* Start/Stop/Continue;
+* CC разрешён;
+* CC global block;
+* CC block только IN1/CH1;
+* Note Clone + Clock;
+* Load → Save → Load, чтобы снова не получить ситуацию вроде Load failed.

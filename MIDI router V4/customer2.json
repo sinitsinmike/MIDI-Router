@@ -1,0 +1,12 @@
+{
+    "version": 1,
+    "enabled": true,
+    "rules": [
+        {
+            "input": 0,
+            "channel": 16,
+            "output": 0,
+            "output_channels": [1, 2, 3, 4]
+        }
+    ]
+}

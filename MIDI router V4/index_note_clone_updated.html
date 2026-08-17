@@ -1,0 +1,571 @@
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>MIDI Router (USB)</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+  th { width: 60px; white-space: nowrap; }
+  .wrap { line-height: 1.9; }
+  .cb { display:inline-block; margin-right: 10px; white-space: nowrap; }
+  .bar { display:flex; gap:10px; align-items:center; margin: 12px 0; flex-wrap: wrap; }
+  button { padding: 10px 14px; }
+  #status { font-size: 14px; }
+  .hint { color:#666; font-size: 13px; margin-bottom: 10px; }
+  pre { background:#f7f7f7; padding:10px; border:1px solid #eee; overflow:auto; }
+</style>
+</head>
+<body>
+<h2>MIDI Router Config (Pico via USB Serial)</h2>
+
+<div class="bar">
+  <button id="btnConnect">Connect</button>
+  <button id="btnDisconnect" disabled>Disconnect</button>
+  <button id="btnLoad" disabled>Load</button>
+  <button id="btnSave" disabled>Save</button>
+  <button id="btnMidirt" disabled>Show MIDIRT</button>
+  <span id="status"></span>
+</div>
+
+<div class="hint">
+  Работает в Chrome/Edge (WebSerial). Подключи Pico по USB, нажми Connect.<br/>
+  Channels: ALL = CH=-1. Outputs: куда слать с данного входа.
+</div>
+
+<table id="tbl">
+  <thead><tr><th>IN</th><th>Channels</th><th>Outputs</th></tr></thead>
+  <tbody></tbody>
+</table>
+<hr>
+
+<h3>Keyboard Split</h3>
+
+<table id="splitTable">
+<thead>
+<tr>
+<th>Enable</th>
+<th>Input</th>
+<th>Channel</th>
+<th>Split</th>
+<th>Below →</th>
+<th>Above →</th>
+</tr>
+</thead>
+
+<tbody>
+
+<tr>
+
+<td>
+<input type="checkbox" id="splitEnable0">
+</td>
+
+<td>
+<select id="splitIn0">
+<option>IN1</option>
+<option>IN2</option>
+<option>IN3</option>
+<option>IN4</option>
+<option>IN5</option>
+<option>IN6</option>
+</select>
+</td>
+
+<td>
+<select id="splitCh0">
+<option>CH1</option>
+<option>CH2</option>
+<option>CH3</option>
+<option>CH4</option>
+<option>CH5</option>
+<option>CH6</option>
+<option>CH7</option>
+<option>CH8</option>
+<option>CH9</option>
+<option>CH10</option>
+<option>CH11</option>
+<option>CH12</option>
+<option>CH13</option>
+<option>CH14</option>
+<option>CH15</option>
+<option>CH16</option>
+</select>
+</td>
+
+<td>
+<input id="splitNote0" value="C4" size="4">
+</td>
+
+<td>
+OUT
+<input id="splitLowOut0" type="number" min="1" max="6" value="1" style="width:45px">
+CH
+<input id="splitLowCh0" type="number" min="1" max="16" value="2" style="width:45px">
+</td>
+
+<td>
+OUT
+<input id="splitHighOut0" type="number" min="1" max="6" value="1" style="width:45px">
+CH
+<input id="splitHighCh0" type="number" min="1" max="16" value="3" style="width:45px">
+</td>
+
+</tr>
+
+</tbody>
+</table>
+
+<hr>
+
+<h3>Note Clone</h3>
+<div class="hint">
+  Копирует Note On/Note Off с выбранного входного MIDI-канала
+  на несколько выходных MIDI-каналов.<br>
+  ⚠️ Note Clone блокирует CC и другие MIDI-сообщения для этого входа/канала.
+  Передаются только Note On/Note Off.
+</div>
+
+<table id="noteCloneTable">
+<thead>
+<tr>
+<th>Enable</th>
+<th>Input</th>
+<th>Channel</th>
+<th>Output</th>
+<th>Output Channels</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><input type="checkbox" id="noteCloneEnable0"></td>
+<td>
+<select id="noteCloneIn0">
+<option>IN1</option><option>IN2</option><option>IN3</option>
+<option>IN4</option><option>IN5</option><option>IN6</option>
+</select>
+</td>
+<td>
+<select id="noteCloneCh0">
+<option>CH1</option><option>CH2</option><option>CH3</option>
+<option>CH4</option><option>CH5</option><option>CH6</option>
+<option>CH7</option><option>CH8</option><option>CH9</option>
+<option>CH10</option><option>CH11</option><option>CH12</option>
+<option>CH13</option><option>CH14</option><option>CH15</option>
+<option>CH16</option>
+</select>
+</td>
+<td>
+<select id="noteCloneOut0">
+<option>OUT1</option><option>OUT2</option><option>OUT3</option>
+<option>OUT4</option><option>OUT5</option><option>OUT6</option>
+</select>
+</td>
+<td id="noteCloneOutputChannels0" class="wrap"></td>
+</tr>
+</tbody>
+</table>
+
+<h3>Warnings</h3>
+<pre id="warn">(none)</pre>
+
+<h3>routing_table.py preview</h3>
+<pre id="midirt">(none)</pre>
+
+<script>
+const NUM_PORTS = 6;
+const NUM_OUTS = 6;
+const CH_LABELS = ["ALL", ...Array.from({length:16}, (_,i)=>String(i+1))];
+
+const el = (id) => document.getElementById(id);
+const sid = (i, kind, j) => `in${i}-${kind}${j}`;
+const setStatus = (msg, ok=true) => { el("status").textContent = msg; el("status").style.color = ok ? "green":"crimson"; };
+
+function buildTable() {
+  const tb = el("tbl").querySelector("tbody");
+  tb.innerHTML = "";
+  for (let i=0;i<NUM_PORTS;i++) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = `IN${i+1}`;
+    tr.appendChild(th);
+
+    const tdCh = document.createElement("td"); tdCh.className = "wrap";
+    for (let c=0;c<17;c++) {
+      const lab = document.createElement("label"); lab.className = "cb";
+      const inp = document.createElement("input"); inp.type="checkbox"; inp.id = sid(i,"ch",c);
+      lab.appendChild(inp);
+      lab.appendChild(document.createTextNode(" " + CH_LABELS[c]));
+      tdCh.appendChild(lab);
+    }
+    tr.appendChild(tdCh);
+
+    const tdOut = document.createElement("td"); tdOut.className = "wrap";
+    for (let o=0;o<NUM_OUTS;o++) {
+      const lab = document.createElement("label"); lab.className = "cb";
+      const inp = document.createElement("input"); inp.type="checkbox"; inp.id = sid(i,"out",o);
+      lab.appendChild(inp);
+      lab.appendChild(document.createTextNode(" OUT" + (o+1)));
+      tdOut.appendChild(lab);
+    }
+    tr.appendChild(tdOut);
+
+    tb.appendChild(tr);
+  }
+}
+
+buildTable();
+
+function buildNoteCloneOutputChannels() {
+  const td = el("noteCloneOutputChannels0");
+  for (let ch = 1; ch <= 16; ch++) {
+    const label = document.createElement("label");
+    label.className = "cb";
+
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.id = `noteCloneOutCh0-${ch}`;
+
+    label.appendChild(input);
+    label.appendChild(document.createTextNode(" CH" + ch));
+    td.appendChild(label);
+  }
+}
+
+buildNoteCloneOutputChannels();
+
+let port = null;
+let reader = null;
+let writer = null;
+let rxBuf = "";
+let pending = []; // queue of resolvers waiting for lines
+
+function setConnectedUI(connected) {
+  el("btnDisconnect").disabled = !connected;
+  el("btnLoad").disabled = !connected;
+  el("btnSave").disabled = !connected;
+  el("btnMidirt").disabled = !connected;
+}
+
+async function disconnect() {
+  try {
+    // Stop reader loop
+    try { if (reader) await reader.cancel(); } catch (e) {}
+    try { if (reader) reader.releaseLock(); } catch (e) {}
+    reader = null;
+
+    try { if (writer) writer.releaseLock(); } catch (e) {}
+    writer = null;
+
+    try { if (port) await port.close(); } catch (e) {}
+    port = null;
+
+    rxBuf = "";
+    pending = [];
+    setConnectedUI(false);
+    setStatus("Disconnected");
+  } catch (e) {
+    setStatus("Disconnect failed: " + e, false);
+  }
+}
+
+
+function pushLine(line) {
+  if (pending.length) pending.shift()(line);
+}
+
+async function readLoop() {
+  const dec = new TextDecoder();
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const chunk = dec.decode(value);
+    rxBuf += chunk;
+    let idx;
+    while ((idx = rxBuf.indexOf("\n")) >= 0) {
+      const line = rxBuf.slice(0, idx).replace(/\r$/, "");
+      rxBuf = rxBuf.slice(idx+1);
+      pushLine(line);
+    }
+  }
+}
+
+function readLine() {
+  return new Promise((resolve) => pending.push(resolve));
+}
+
+async function sendLine(s) {
+  const enc = new TextEncoder();
+  await writer.write(enc.encode(s + "\n"));
+}
+
+async function rpcGet() {
+  await sendLine("GET");
+  const line = await readLine();
+  if (!line.startsWith("OK ")) throw new Error(line);
+  return JSON.parse(line.slice(3));
+}
+
+async function rpcSet(obj) {
+  const payload = JSON.stringify(obj);
+  await sendLine("SET " + payload);
+  const line = await readLine();
+  if (!line.startsWith("OK")) throw new Error(line);
+  return true;
+}
+async function rpcGetSplit() {
+
+  await sendLine("GETSPLIT");
+
+  const line = await readLine();
+
+  if (!line.startsWith("OK ")) throw new Error(line);
+
+  return JSON.parse(line.slice(3));
+
+}
+
+async function rpcSetSplit(obj) {
+
+  const payload = JSON.stringify(obj);
+
+  await sendLine("SETSPLIT " + payload);
+
+  const line = await readLine();
+
+  if (!line.startsWith("OK")) throw new Error(line);
+
+  return true;
+
+}
+
+async function rpcGetNoteClone() {
+  await sendLine("GETNOTECLONE");
+  const line = await readLine();
+  if (!line.startsWith("OK ")) throw new Error(line);
+  return JSON.parse(line.slice(3));
+}
+
+async function rpcSetNoteClone(obj) {
+  await sendLine("SETNOTECLONE " + JSON.stringify(obj));
+  const line = await readLine();
+  if (!line.startsWith("OK")) throw new Error(line);
+  return true;
+}
+
+function collectNoteClone() {
+  const outputChannels = [];
+
+  for (let ch = 1; ch <= 16; ch++) {
+    if (el(`noteCloneOutCh0-${ch}`).checked) {
+      outputChannels.push(ch);
+    }
+  }
+
+  return {
+    version: 1,
+    enabled: el("noteCloneEnable0").checked,
+    rules: [{
+      enabled: el("noteCloneEnable0").checked,
+      input: Number(el("noteCloneIn0").selectedIndex),
+      channel: Number(el("noteCloneCh0").selectedIndex) + 1,
+      output: Number(el("noteCloneOut0").selectedIndex),
+      output_channels: outputChannels
+    }]
+  };
+}
+
+function applyNoteClone(cfg) {
+  if (!cfg || !Array.isArray(cfg.rules) || cfg.rules.length === 0) {
+    if (cfg && typeof cfg.enabled !== "undefined") {
+      el("noteCloneEnable0").checked = !!cfg.enabled;
+    }
+    return;
+  }
+
+  const rule = cfg.rules[0];
+
+  el("noteCloneEnable0").checked = !!rule.enabled;
+  el("noteCloneIn0").selectedIndex = Math.max(
+    0, Math.min(5, Number(rule.input || 0))
+  );
+  el("noteCloneCh0").selectedIndex = Math.max(
+    0, Math.min(15, Number(rule.channel || 1) - 1)
+  );
+  el("noteCloneOut0").selectedIndex = Math.max(
+    0, Math.min(NUM_OUTS - 1, Number(rule.output || 0))
+  );
+
+  for (let ch = 1; ch <= 16; ch++) {
+    el(`noteCloneOutCh0-${ch}`).checked = false;
+  }
+
+  if (Array.isArray(rule.output_channels)) {
+    for (const ch of rule.output_channels) {
+      if (Number.isInteger(ch) && ch >= 1 && ch <= 16) {
+        el(`noteCloneOutCh0-${ch}`).checked = true;
+      }
+    }
+  }
+}
+
+async function rpcMidirt() {
+  await sendLine("MIDIRT");
+  let out = [];
+  while (true) {
+    const line = await readLine();
+    if (line === "END") break;
+    if (line.startsWith("ERR")) throw new Error(line);
+    if (line !== "BEGIN") out.push(line);
+  }
+  return out.join("\n");
+}
+
+function collectMatrix() {
+  const m = { version: 1, inputs: [], warnings: [] };
+  for (let i=0;i<NUM_PORTS;i++) {
+    const channels = [];
+    const outputs = [];
+    for (let c=0;c<17;c++) channels.push(!!el(sid(i,"ch",c)).checked);
+    for (let o=0;o<NUM_OUTS;o++) outputs.push(!!el(sid(i,"out",o)).checked);
+    m.inputs.push({ channels, outputs });
+  }
+  return m;
+}
+
+function applyMatrix(m) {
+  for (let i=0;i<NUM_PORTS;i++) {
+    for (let c=0;c<17;c++)
+      el(sid(i,"ch",c)).checked = !!m.inputs[i].channels[c];
+
+    for (let o=0;o<NUM_OUTS;o++)
+      el(sid(i,"out",o)).checked = !!m.inputs[i].outputs[o];
+  }
+
+  el("warn").textContent =
+      (m.warnings && m.warnings.length)
+          ? m.warnings.join("\n")
+          : "(none)";
+}
+
+function collectSplit() {
+  return {
+    version: 1,
+    splits: [{
+      enabled: el("splitEnable0").checked,
+      input: Number(el("splitIn0").selectedIndex),
+      channel: Number(el("splitCh0").selectedIndex) + 1,
+      split_note: el("splitNote0").value.trim(),
+
+      low: {
+        output: Number(el("splitLowOut0").value) - 1,
+        channel: Number(el("splitLowCh0").value)
+      },
+
+      high: {
+        output: Number(el("splitHighOut0").value) - 1,
+        channel: Number(el("splitHighCh0").value)
+      }
+    }]
+  };
+}
+
+
+function applySplit(cfg) {
+
+  if (!cfg.splits || cfg.splits.length === 0)
+
+    return;
+
+  const s = cfg.splits[0];
+
+  el("splitEnable0").checked = !!s.enabled;
+
+  el("splitIn0").selectedIndex = s.input;
+
+  el("splitCh0").selectedIndex = s.channel - 1;
+
+  el("splitNote0").value = s.split_note;
+
+  el("splitLowOut0").value = s.low.output + 1;
+
+  el("splitLowCh0").value = s.low.channel;
+
+  el("splitHighOut0").value = s.high.output + 1;
+
+  el("splitHighCh0").value = s.high.channel;
+
+}
+
+setConnectedUI(false);
+
+el("btnConnect").addEventListener("click", async () => {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    reader = port.readable.getReader();
+    readLoop();
+    setConnectedUI(true);
+    setStatus("Connected");
+  } catch (e) {
+    setStatus("Connect failed: " + e, false);
+  }
+});
+
+el("btnDisconnect").addEventListener("click", disconnect);
+
+el("btnLoad").addEventListener("click", async () => {
+  try {
+    const m = await rpcGet();
+    applyMatrix(m);
+
+    const split = await rpcGetSplit();
+    applySplit(split);
+
+    const noteClone = await rpcGetNoteClone();
+    applyNoteClone(noteClone);
+
+    setStatus("Loaded");
+  } catch (e) {
+    setStatus("Load failed: " + e, false);
+  }
+});
+
+el("btnSave").addEventListener("click", async () => {
+  try {
+    const m = collectMatrix();
+    await rpcSet(m);
+
+    const split = collectSplit();
+    await rpcSetSplit(split);
+
+    const noteClone = collectNoteClone();
+    await rpcSetNoteClone(noteClone);
+
+    const m2 = await rpcGet();
+    applyMatrix(m2);
+
+    const split2 = await rpcGetSplit();
+    applySplit(split2);
+
+    const noteClone2 = await rpcGetNoteClone();
+    applyNoteClone(noteClone2);
+
+    setStatus("Saved");
+  } catch (e) {
+    setStatus("Save failed: " + e, false);
+  }
+});
+
+el("btnMidirt").addEventListener("click", async () => {
+  try {
+    el("midirt").textContent = await rpcMidirt();
+  } catch (e) {
+    el("midirt").textContent = "Failed: " + e;
+  }
+});
+</script>
+</body>
+</html>
